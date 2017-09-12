@@ -5,6 +5,8 @@ from pymongo import MongoClient
 import dropbox
 
 from pprint import pprint
+import os
+import re
 
 class DataBaseConnexion(object):
 
@@ -33,7 +35,6 @@ class DataBaseConnexion(object):
 		documents=collection.find()
 		for document in documents:
 			print(document)
-		
 
 	def insertDocument(self):
 		pass
@@ -51,28 +52,54 @@ class DropboxConnexion():
 		#print(dropbox_client.account_infos())
 		return dropbox_client
 
+	def readFile(self,dropbox_client,file_path):
+		fil=dropbox_client.get_file(file_path)
+		"""print("file content")
+		print(fil.read())"""
+		return (fil.read())
+
 	def listFolders(self,dropbox_client,folder_path):
-		folders=dropbox_client.metadata(folder_path)
-		print('hello')
-		print(folders["contents"])
-		return folders["contents"]
+		files=[]
+		for fil in dropbox_client.metadata(folder_path)["contents"]:
+			if fil["is_dir"]==False:
+				#files.append(fil)
+				path=fil["path"]
+				base=os.path.basename(path)
+				name,ext=os.path.splitext(base)
+				content=self.readFile(dropbox_client,path)
+				document={"name":name,"path":path,"content":content}
+				pprint(document)
+			else:
+				self.listFolders(dropbox_client,fil["path"])
 
-
-		
+	
 
 
 if __name__ == '__main__':
+
+	config_file=open('../.config','r')
+	lines=config_file.readlines()
+	configs=[]
+	for line in lines:
+		config=re.findall(r':+.*',line)
+		config=config[0][1:]
+		configs.append(config)
+	server=configs[0]
+	port=int(configs[1])
+	key=configs[2]
+	db=configs[3]
+	col=configs[4]
+	path=configs[5]
 	
-	connexion_db=DataBaseConnexion('localhost',27017)
+	connexion_db=DataBaseConnexion(server,port)
 	mongo_client=connexion_db.connect()
-	data_base=connexion_db.getDataBase(mongo_client,'Files')
-	collection=connexion_db.getCollection(data_base,'file')
+	data_base=connexion_db.getDataBase(mongo_client,db)
+	collection=connexion_db.getCollection(data_base,col)
 	connexion_db.showCollectionContent(collection)
 
-	connexion_dp=DropboxConnexion('a677i_26wXAAAAAAAAAAOQNC1q-qgwWwG-9WvGvhbsAbxRvSRdE-OgStsTN4oFQQ')
+	connexion_dp=DropboxConnexion(key)
 	dropbox_client=connexion_dp.connect()
-	connexion_dp.listFolders(dropbox_client,'/Docs')
-
+	files=connexion_dp.listFolders(dropbox_client,path)
 
 
 
