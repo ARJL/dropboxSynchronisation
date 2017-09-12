@@ -8,7 +8,10 @@ from pprint import pprint
 import os
 import re
 
-class DataBaseConnexion(object):
+from threading import Thread
+import time
+
+class DataBaseConnexion():
 
 	def __init__(self, server,port):
 		self.server=server
@@ -33,17 +36,21 @@ class DataBaseConnexion(object):
 
 	def showCollectionContent(self,collection):
 		documents=collection.find()
+		print("collection content")
 		for document in documents:
-			print(document)
+			pprint(document)
+		print("collection content")
 
-	def insertDocument(self):
-		pass
+	def insertDocument(self,collection,document,path):
+		collection.update( {"path":path},document,upsert=True)
+		print("a document has been updated")
 
-	def deleteDocument(self):
-		pass
+	def deleteDocument(self,collection,document):
+		collection.delete_one(document)
+		print("a document has been deleted")
 
 
-class DropboxConnexion():
+class DropboxConnexion(DataBaseConnexion):
 	def __init__(self, key):
 		self.key = key
 
@@ -58,21 +65,31 @@ class DropboxConnexion():
 		print(fil.read())"""
 		return (fil.read())
 
-	def listFolders(self,dropbox_client,folder_path):
-		files=[]
-		for fil in dropbox_client.metadata(folder_path)["contents"]:
-			if fil["is_dir"]==False:
-				#files.append(fil)
-				path=fil["path"]
-				base=os.path.basename(path)
-				name,ext=os.path.splitext(base)
-				content=self.readFile(dropbox_client,path)
-				document={"name":name,"path":path,"content":content}
-				pprint(document)
-			else:
-				self.listFolders(dropbox_client,fil["path"])
+	def synchronize(self,dropbox_client,folder_path,connexion_db,collection):
+		while True:
+			#update documents
+			for fil in dropbox_client.metadata(folder_path)["contents"]:
+				if fil["is_dir"]==False:
 
-	
+					path=fil["path"] 
+					parent_folder,base=os.path.split(path)
+					name,ext=os.path.splitext(base)
+					content=self.readFile(dropbox_client,path)
+					document={"parent_folder":parent_folder,"name":name,"path":path,"content":content}
+					
+					connexion_db.insertDocument(collection,document,path)
+				else:
+					self.synchronize(dropbox_client,fil["path"],connexion_db,collection)
+
+			#delete documents
+			for fil in collection.find():
+				res=dropbox_client.search(fil["parent_folder"],fil["name"])
+
+				if res==[]:
+					connexion_db.deleteDocument(collection,fil)
+			print("sleeping...")
+			time.sleep(1)
+
 
 
 if __name__ == '__main__':
@@ -99,7 +116,7 @@ if __name__ == '__main__':
 
 	connexion_dp=DropboxConnexion(key)
 	dropbox_client=connexion_dp.connect()
-	files=connexion_dp.listFolders(dropbox_client,path)
+	connexion_dp.synchronize(dropbox_client,path,connexion_db,collection)
 
 
 
